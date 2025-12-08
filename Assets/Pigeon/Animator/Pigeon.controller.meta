@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 0c68ba50d194a5641a741be2dde5abea
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 204583
+  packageName: Pigeon Animated
+  packageVersion: 2019.4.0f1
+  assetPath: Assets/Pigeon/Animator/Pigeon.controller
+  uploadId: 714334

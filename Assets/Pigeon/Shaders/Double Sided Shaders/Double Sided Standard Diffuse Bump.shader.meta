@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: b965f82ca09623c41afded17f5d27c27
+timeCreated: 1489416181
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 204583
+  packageName: Pigeon Animated
+  packageVersion: 2019.4.0f1
+  assetPath: Assets/Pigeon/Shaders/Double Sided Shaders/Double Sided Standard Diffuse
+    Bump.shader
+  uploadId: 714334

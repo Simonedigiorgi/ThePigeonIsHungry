@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: ce30e28f3e80d6f4d9e1d51e481a4d41
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 204583
+  packageName: Pigeon Animated
+  packageVersion: 2019.4.0f1
+  assetPath: Assets/Pigeon/Scripts/Pigeon.cs
+  uploadId: 714334

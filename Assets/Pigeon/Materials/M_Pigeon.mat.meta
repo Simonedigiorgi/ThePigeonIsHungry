@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: dc1572913b90e5843bcdfc26297791f9
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 204583
+  packageName: Pigeon Animated
+  packageVersion: 2019.4.0f1
+  assetPath: Assets/Pigeon/Materials/M_Pigeon.mat
+  uploadId: 714334
