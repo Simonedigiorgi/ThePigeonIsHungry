@@ -1,59 +1,78 @@
 ﻿using UnityEngine;
 using TMPro;
 using System;
-using UnityEngine.UI; // per LayoutRebuilder
+using UnityEngine.UI;
+using Sirenix.OdinInspector;
 
+/// <summary>
+/// Sistema di dialogo minimal: mostra "Speaker: Linea" in un pannello.
+/// Blocca opzionalmente il player finché il dialogo non finisce.
+/// </summary>
 public class DialogueSystem : MonoBehaviour
 {
     public static DialogueSystem Instance { get; private set; }
 
-    [Header("UI")]
-    [SerializeField] private GameObject dialogueRoot;          // GameObject con Image
-    [SerializeField] private RectTransform dialogueBackground; // RectTransform dell'Image (può essere lo stesso di dialogueRoot)
-    [SerializeField] private TextMeshProUGUI dialogueText;     // unico TMP con nome + testo
+    // ---------- UI ----------
+    [BoxGroup("UI")]
+    [SerializeField] private GameObject dialogueRoot;  // contiene Image + TMP
 
-    [Header("Layout")]
-    [SerializeField] private float horizontalPadding = 40f;    // padding ai lati del testo
+    [BoxGroup("UI")]
+    [SerializeField, MinValue(0f)]
+    private float horizontalPadding = 40f;
 
-    private DialogueData currentData;
-    private int currentIndex;
-    private Action onDialogueComplete;
+    private RectTransform backgroundRect; // ottenuto automaticamente
+    private TextMeshProUGUI dialogueText; // ottenuto automaticamente
 
-    // se true, è stato il dialogo a bloccare il player (es. Examine)
-    private bool lockedPlayerControls = false;
+    // ---------- RUNTIME (hidden) ----------
+    [HideInInspector] private DialogueData currentData;
+    [HideInInspector] private int currentIndex;
+    [HideInInspector] private Action onDialogueComplete;
+    [HideInInspector] private bool lockedPlayerControls;
 
     public bool IsOpen => dialogueRoot != null && dialogueRoot.activeSelf;
 
 
     private void Awake()
     {
-        if (Instance != null)
+        if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
         Instance = this;
 
-        if (dialogueRoot != null)
-            dialogueRoot.SetActive(false);
+        if (dialogueRoot == null)
+        {
+            Debug.LogError("DialogueSystem: dialogueRoot non assegnato!");
+            enabled = false;
+            return;
+        }
+
+        // Prendi automaticamente i componenti necessari
+        backgroundRect = dialogueRoot.GetComponent<RectTransform>();
+        dialogueText = dialogueRoot.GetComponentInChildren<TextMeshProUGUI>(true);
+
+        if (dialogueText == null)
+            Debug.LogError("DialogueSystem: impossibile trovare un TextMeshProUGUI dentro dialogueRoot!");
+
+        dialogueRoot.SetActive(false);
     }
 
+
     /// <summary>
-    /// Avvia un dialogo.
-    /// lockPlayerControls = true → disabilita i controlli del player finché il dialogo non termina.
-    /// lockPlayerControls = false → lascia inalterato lo stato del player (utile per le cinematic).
+    /// Avvia il dialogo.
     /// </summary>
-    public void StartDialogue(DialogueData data, bool lockPlayerControls, Action onComplete = null)
+    public void StartDialogue(DialogueData data, bool lockControls, Action onComplete = null)
     {
-        if (data == null) return;
+        if (data == null || data.lines == null || data.lines.Length == 0)
+            return;
 
         currentData = data;
         currentIndex = 0;
         onDialogueComplete = onComplete;
-        lockedPlayerControls = lockPlayerControls;
+        lockedPlayerControls = lockControls;
 
-        if (dialogueRoot != null)
-            dialogueRoot.SetActive(true);
+        dialogueRoot.SetActive(true);
 
         if (lockedPlayerControls && FirstPersonController.Instance != null)
             FirstPersonController.Instance.ControlsEnabled = false;
@@ -61,50 +80,44 @@ public class DialogueSystem : MonoBehaviour
         UpdateDialogueTextAndSize();
     }
 
+
     /// <summary>
-    /// Aggiorna il testo (speaker + linea corrente) e la larghezza dello sfondo.
+    /// Aggiorna il testo e ridimensiona il pannello.
     /// </summary>
     private void UpdateDialogueTextAndSize()
     {
         if (currentData == null || dialogueText == null)
             return;
 
-        // --- TESTO SU UNA SOLA RIGA ---
-        if (string.IsNullOrEmpty(currentData.speakerName))
-        {
-            // solo dialogo
-            dialogueText.text = currentData.lines[currentIndex];
-        }
-        else
-        {
-            // Speaker: Dialogo  (tutto su una riga, senza bold)
-            dialogueText.text = $"{currentData.speakerName}: {currentData.lines[currentIndex]}";
-        }
+        string speaker = currentData.speakerName;
+        string line = currentData.lines[currentIndex];
 
-        // forza TMP ad aggiornare
+        dialogueText.text = string.IsNullOrEmpty(speaker)
+            ? line
+            : $"{speaker}: {line}";
+
         dialogueText.ForceMeshUpdate();
+        float width = dialogueText.preferredWidth + horizontalPadding * 2f;
 
-        float preferredWidth = dialogueText.preferredWidth;
-
-        if (dialogueBackground != null)
+        if (backgroundRect != null)
         {
-            var size = dialogueBackground.sizeDelta;
-            size.x = preferredWidth + horizontalPadding * 2f;
-            dialogueBackground.sizeDelta = size;
+            Vector2 size = backgroundRect.sizeDelta;
+            size.x = width;
+            backgroundRect.sizeDelta = size;
 
-            LayoutRebuilder.ForceRebuildLayoutImmediate(dialogueBackground);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(backgroundRect);
         }
     }
 
+
     /// <summary>
-    /// Chiamato esternamente (es. da PlayerInteraction) quando il giocatore preme Interact.
+    /// Avanza alla prossima linea.
     /// </summary>
     public void Advance()
     {
         if (!IsOpen || currentData == null)
             return;
 
-        // blocco avanza-dialogo durante cinematic
         if (CinematicSequence.IsAnyCinematicPlaying)
             return;
 
@@ -119,37 +132,42 @@ public class DialogueSystem : MonoBehaviour
         UpdateDialogueTextAndSize();
     }
 
+
+    /// <summary>
+    /// Chiude il dialogo normalmente.
+    /// </summary>
     private void EndDialogue()
     {
-        if (dialogueRoot != null)
-            dialogueRoot.SetActive(false);
+        dialogueRoot.SetActive(false);
 
         if (lockedPlayerControls && FirstPersonController.Instance != null)
             FirstPersonController.Instance.ControlsEnabled = true;
 
         onDialogueComplete?.Invoke();
 
-        currentData = null;
-        currentIndex = 0;
-        onDialogueComplete = null;
-        lockedPlayerControls = false;
+        ResetState();
     }
 
+
     /// <summary>
-    /// Chiusura forzata (es. quando finisce una cinematic).
-    /// Non chiama la callback onDialogueComplete.
+    /// Chiusura forzata senza callback.
     /// </summary>
     public void ForceCloseDialogue()
     {
         if (!IsOpen)
             return;
 
-        if (dialogueRoot != null)
-            dialogueRoot.SetActive(false);
+        dialogueRoot.SetActive(false);
 
         if (lockedPlayerControls && FirstPersonController.Instance != null)
             FirstPersonController.Instance.ControlsEnabled = true;
 
+        ResetState();
+    }
+
+
+    private void ResetState()
+    {
         currentData = null;
         currentIndex = 0;
         onDialogueComplete = null;

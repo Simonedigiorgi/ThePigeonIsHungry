@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0c4d40c48c9f8804eaa896a5684e38a0, type: 3}
-  m_Name: DialogueText
+  m_Name: DG_Scene_A_01
   m_EditorClassIdentifier: Assembly-CSharp::DialogueData
   speakerName: Piccione
   lines:

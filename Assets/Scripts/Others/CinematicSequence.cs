@@ -226,10 +226,11 @@ public class CinematicSequence : MonoBehaviour
 
             if (currentClipIndex >= clips.Length)
             {
+                // abbiamo finito tutte le clip della sequenza
                 sequenceCompleted = true;
 
-                if (playOnlyOnce)
-                    DisableInteraction();
+                // 🔴 A PRESCINDERE da playOnlyOnce, disabilitiamo l'interazione
+                DisableInteraction();
             }
         }
         else if (playOnlyOnce)
@@ -239,6 +240,7 @@ public class CinematicSequence : MonoBehaviour
             DisableInteraction();
         }
     }
+
 
     private void DisableInteraction()
     {
