@@ -32,7 +32,7 @@ public class FirstPersonController : MonoBehaviour
 
     private void Awake()
     {
-        Instance = this;   // ⭐ AGGIUNTO
+        Instance = this;
 
         controller = GetComponent<CharacterController>();
 
