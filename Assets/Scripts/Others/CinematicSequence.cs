@@ -7,21 +7,27 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Animation))]
 public class CinematicSequence : MonoBehaviour
 {
-    // ---------------- INTERACTION ----------------
+    // ---------------- INTERACTION (RAYCAST) ----------------
     [BoxGroup("Interaction")]
     public string interactionLabel = "Cinematic";
 
     [BoxGroup("Interaction")]
-    [Tooltip("Collider usato per l'interazione (raycast + trigger). Può stare su un GameObject separato.")]
+    [Tooltip("Collider colpito dal raycast del PlayerInteraction (NON deve essere trigger).")]
     public BoxCollider interactionCollider;
 
     [BoxGroup("Interaction")]
-    [Tooltip("Se true, entrare nel collider (OnTriggerEnter) fa partire la cinematic.")]
-    public bool autoPlayOnTrigger = false;
+    [Tooltip("Se true, questa cinematic può essere avviata dal raycast solo una volta.")]
+    public bool playInteractionOnlyOnce = false;
 
-    [BoxGroup("Interaction")]
-    [Tooltip("Se true, dopo aver finito la sequence questa cinematic non sarà più interagibile.")]
-    public bool playOnlyOnce = false;
+
+    // ---------------- TRIGGER COLLIDER ----------------
+    [BoxGroup("Trigger")]
+    [Tooltip("Collider trigger opzionale che avvia automaticamente la cinematic quando il Player entra.")]
+    public BoxCollider triggerCollider;
+
+    [BoxGroup("Trigger")]
+    [Tooltip("Se true, la cinematic può essere avviata dal trigger solo una volta.")]
+    public bool playTriggerOnlyOnce = false;
 
 
     // ---------------- CAMERA ----------------
@@ -34,8 +40,7 @@ public class CinematicSequence : MonoBehaviour
     [Tooltip("Lista di clip da usare. Se vuota, viene usata la clip di default dell'Animation.")]
     [ReadOnly] public AnimationClip[] clips;
 
-    [BoxGroup("Animation")]
-    [MinValue(0)]
+    [BoxGroup("Animation"), MinValue(0)]
     [Tooltip("Indice di partenza nella lista Clips.")]
     public int startClipIndex = 0;
 
@@ -67,10 +72,8 @@ public class CinematicSequence : MonoBehaviour
 
     [BoxGroup("Events")]
     public UnityEvent onAnimationEventParticle;
-    public void TriggerParticleEvent()
-    {
-        onAnimationEventParticle?.Invoke();
-    }
+    public void TriggerParticleEvent() => onAnimationEventParticle?.Invoke();
+
 
     // ---------------- INTERNAL ----------------
     private Animation anim;
@@ -82,6 +85,10 @@ public class CinematicSequence : MonoBehaviour
 
     private int currentClipIndex;
     private bool sequenceCompleted;
+
+    // “play una volta” per canale
+    private bool interactionUsedOnce;
+    private bool triggerUsedOnce;
 
     public static readonly List<CinematicSequence> AllSequences = new();
     public static bool IsAnyCinematicPlaying = false;
@@ -100,13 +107,15 @@ public class CinematicSequence : MonoBehaviour
         if (cinematicCamera)
             cinematicCamera.enabled = false;
 
-        if (interactionCollider)
+        // interactionCollider: NON lo tocchiamo, può essere normale box
+        // triggerCollider: deve essere trigger + forwarder
+        if (triggerCollider)
         {
-            interactionCollider.isTrigger = true;
+            triggerCollider.isTrigger = true;
 
-            var forwarder = interactionCollider.GetComponent<CinematicTriggerForwarder>();
+            var forwarder = triggerCollider.GetComponent<CinematicTriggerForwarder>();
             if (forwarder == null)
-                forwarder = interactionCollider.gameObject.AddComponent<CinematicTriggerForwarder>();
+                forwarder = triggerCollider.gameObject.AddComponent<CinematicTriggerForwarder>();
 
             forwarder.Init(this);
         }
@@ -116,12 +125,13 @@ public class CinematicSequence : MonoBehaviour
 
         allowEvents = false;
         sequenceCompleted = false;
+        interactionUsedOnce = false;
+        triggerUsedOnce = false;
 
-        // ➜ SE Clips è vuoto, lo auto–riempiamo dalle animazioni del componente Animation
+        // Se clips è vuoto, lo riempiamo dalle AnimationState
         if (clips == null || clips.Length == 0)
         {
             var list = new List<AnimationClip>();
-
             foreach (AnimationState state in anim)
             {
                 if (state != null && state.clip != null && !list.Contains(state.clip))
@@ -138,34 +148,75 @@ public class CinematicSequence : MonoBehaviour
     }
 
 
-    // ---------------- PLAY ----------------
-    public void Play(FirstPersonController controller, Camera pCamera)
+    // ======================================================
+    //                    PUBLIC API
+    // ======================================================
+
+    /// <summary>
+    /// Chiamato dal PlayerInteraction (raycast).
+    /// </summary>
+    public void PlayFromInteraction(FirstPersonController controller, Camera cam)
     {
-        // se è già in corso o abbiamo finito e va giocata solo una volta → esci
-        if (isPlaying || anim == null)
+        PlayInternal(controller, cam, fromTrigger: false);
+    }
+
+    /// <summary>
+    /// Chiamato dal trigger (forwarder).
+    /// </summary>
+    public void PlayFromTrigger()
+    {
+        var controller = FirstPersonController.Instance;
+        var cam = Camera.main;
+
+        if (controller != null && cam != null)
+            PlayInternal(controller, cam, fromTrigger: true);
+    }
+
+
+    // ======================================================
+    //                   CORE PLAY LOGIC
+    // ======================================================
+
+    private void PlayInternal(FirstPersonController controller, Camera cam, bool fromTrigger)
+    {
+        if (isPlaying || anim == null || sequenceCompleted)
             return;
 
-        if (playOnlyOnce && sequenceCompleted)
-            return;
+        // gestisci “play una sola volta” per canale
+        if (fromTrigger)
+        {
+            if (playTriggerOnlyOnce && triggerUsedOnce)
+                return;
+
+            if (playTriggerOnlyOnce)
+                triggerUsedOnce = true;
+        }
+        else
+        {
+            if (playInteractionOnlyOnce && interactionUsedOnce)
+                return;
+
+            if (playInteractionOnlyOnce)
+                interactionUsedOnce = true;
+        }
 
         IsAnyCinematicPlaying = true;
         isPlaying = true;
         allowEvents = true;
 
         playerController = controller;
-        playerCamera = pCamera;
+        playerCamera = cam;
 
         if (playerController) playerController.ControlsEnabled = false;
         if (playerCamera) playerCamera.enabled = false;
         if (cinematicCamera) cinematicCamera.enabled = true;
         if (activateDuringCinematic) activateDuringCinematic.SetActive(true);
 
-        // scegli la clip da riprodurre
         string clipName = GetCurrentClipName();
         if (!string.IsNullOrEmpty(clipName))
             anim.Play(clipName);
         else
-            anim.Play(); // clip di default
+            anim.Play();
 
         StartCoroutine(WaitForEnd());
     }
@@ -178,9 +229,8 @@ public class CinematicSequence : MonoBehaviour
             return clips[idx] != null ? clips[idx].name : null;
         }
 
-        return null; // usa default
+        return null;
     }
-
 
     private IEnumerator WaitForEnd()
     {
@@ -189,7 +239,6 @@ public class CinematicSequence : MonoBehaviour
 
         Stop();
     }
-
 
     private void Stop()
     {
@@ -207,11 +256,10 @@ public class CinematicSequence : MonoBehaviour
         if (activateDuringCinematic)
             activateDuringCinematic.SetActive(false);
 
-        // chiudi eventuale dialogo aperto ma senza riabilitare i controlli (già fatto sopra)
+        // chiudi eventuale dialogo aperto
         if (DialogueSystem.Instance != null)
             DialogueSystem.Instance.ForceCloseDialogue();
 
-        // gestisci avanzamento sequence
         HandleSequenceAdvance();
 
         isPlaying = false;
@@ -226,26 +274,26 @@ public class CinematicSequence : MonoBehaviour
 
             if (currentClipIndex >= clips.Length)
             {
-                // abbiamo finito tutte le clip della sequenza
                 sequenceCompleted = true;
-
-                // 🔴 A PRESCINDERE da playOnlyOnce, disabilitiamo l'interazione
-                DisableInteraction();
+                DisableAllColliders();
             }
         }
-        else if (playOnlyOnce)
+        else if (!advanceOnEachPlay)
         {
-            // single clip (o niente clips[] ma default) e deve essere giocata una sola volta
-            sequenceCompleted = true;
-            DisableInteraction();
+            // niente advance, ma se abbiamo consumato il canale “solo una volta”
+            // lasciamo comunque attivi i collider (potranno usarli altri canali se non flaggati)
+            if (!playInteractionOnlyOnce && !playTriggerOnlyOnce)
+                return;
         }
     }
 
-
-    private void DisableInteraction()
+    private void DisableAllColliders()
     {
         if (interactionCollider)
             interactionCollider.enabled = false;
+
+        if (triggerCollider)
+            triggerCollider.enabled = false;
     }
 
 
@@ -270,35 +318,25 @@ public class CinematicSequence : MonoBehaviour
         actor.CrossFade(stateName, 0.1f);
     }
 
-    // Animation Event: fai partire un dialogo DURANTE la cinematic
     public void TriggerDialogue(DialogueData data)
     {
         if (!allowEvents || data == null || DialogueSystem.Instance == null) return;
-
-        // lockPlayerControls = false → i controlli restano gestiti dalla cinematic
         DialogueSystem.Instance.StartDialogue(data, false, null);
     }
 
-    // --------------------------------------------------
-    // FORWARDER PER IL TRIGGER (Collider separato)
-    // --------------------------------------------------
+
+    // ======================================================
+    //          CHIAMATO DAL FORWARDER DEL TRIGGER
+    // ======================================================
     public void OnTriggerEnteredByPlayer()
     {
-        if (!autoPlayOnTrigger)
-            return;
-
-        var controller = FirstPersonController.Instance;
-        var cam = Camera.main;
-
-        if (controller != null && cam != null)
-            Play(controller, cam);
+        PlayFromTrigger();
     }
 }
 
 
 /// <summary>
-/// Piccolo helper che gira su GameObject del collider e notifica la CinematicSequence.
-/// Viene aggiunto automaticamente in Awake se manca.
+/// Helper su GameObject del triggerCollider che notifica la CinematicSequence.
 /// </summary>
 public class CinematicTriggerForwarder : MonoBehaviour
 {

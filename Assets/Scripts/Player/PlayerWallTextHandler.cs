@@ -1,10 +1,11 @@
 using UnityEngine;
 using TMPro;
+using Sirenix.OdinInspector;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerWallTextHandler : MonoBehaviour
 {
-    [Header("UI")]
+    [BoxGroup("UI")]
     [SerializeField] private TextMeshProUGUI wallText;
 
     private string currentMessage;

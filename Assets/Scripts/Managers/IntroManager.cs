@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
@@ -15,15 +15,43 @@ public class IntroManager : MonoBehaviour
 
 
     // ---------------- INTRO PANEL ----------------
-    [BoxGroup("Intro")]
+    [BoxGroup("Intro Panel")]
     [SerializeField] private GameObject introPanel;
 
-    [BoxGroup("Intro")]
+    [BoxGroup("Intro Panel")]
+    [SerializeField] private TextMeshProUGUI introMainText;
+
+    [BoxGroup("Intro Panel")]
+    [SerializeField, TextArea] private string introText;
+
+    [BoxGroup("Intro Panel")]
+    [SerializeField, MinValue(0f)]
+    private float introMainTextDelay = 0.5f;
+
+    [BoxGroup("Intro Panel")]
     [SerializeField] private TextMeshProUGUI introHintText;
 
-    [BoxGroup("Intro")]
+    [BoxGroup("Intro Panel")]
     [SerializeField, MinValue(0f)]
     private float delayBeforeHint = 2f;
+
+
+
+    // ---------------- EXTRA MESSAGE ----------------
+    [BoxGroup("Extra Message")]
+    [SerializeField] private TextMeshProUGUI extraMessageText;
+
+    [BoxGroup("Extra Message")]
+    [SerializeField, TextArea] private string extraMessage;
+
+    [BoxGroup("Extra Message")]
+    [SerializeField, MinValue(0f)] private float extraMessageDelay = 0.5f;
+
+    [BoxGroup("Extra Message")]
+    [SerializeField, MinValue(0f)] private float extraMessageDuration = 2f;
+
+    [BoxGroup("Extra Message")]
+    [SerializeField] private AudioClip extraMessageSfx;
 
 
     // ---------------- INPUT ----------------
@@ -35,36 +63,37 @@ public class IntroManager : MonoBehaviour
 
     // ---------------- AUDIO ----------------
     [BoxGroup("Audio")]
-    [Tooltip("Suono riprodotto quando premi il comando per chiudere il pannello.")]
     [SerializeField] private AudioClip continueSfx;
 
     [BoxGroup("Audio")]
-    [Tooltip("Musica che parte quando l'intro si chiude.")]
     [SerializeField] private AudioClip musicOnStart;
 
 
-    // ---------------- STATE ----------------
-    [ShowInInspector, ReadOnly]
+    // ---------------- INTERNAL STATE ----------------
     private bool introActive = false;
-
-    [ShowInInspector, ReadOnly]
-    private bool hintVisible = false;
-
     private string keyboardBinding = "";
     private string gamepadBinding = "";
     private bool useGamepadHint = false;
 
+    // ⬇️ nuovo: possiamo continuare solo dopo che l’hint è apparso
+    private bool canContinue = false;
+
+
+    // ======================================
+    //                SETUP
+    // ======================================
 
     private void Awake()
     {
         FindPlayerAndAudio();
-        SetupIntroPanel();
+        SetupUI();
         SetupInput();
 
         introActive = true;
-        hintVisible = false;
+        canContinue = false;   // all’inizio NO
 
-        StartCoroutine(ShowHintAfterDelay());
+        // Sequenza di attivazione UI
+        StartCoroutine(IntroSequenceRoutine());
     }
 
     private void OnDestroy()
@@ -73,57 +102,61 @@ public class IntroManager : MonoBehaviour
     }
 
 
-    // ---------------- SETUP ----------------
-
     private void FindPlayerAndAudio()
     {
         var playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj == null)
         {
-            Debug.LogError("[IntroManager] Nessun GameObject con tag 'Player' trovato in scena.");
+            Debug.LogError("[IntroManager] Nessun Player trovato.");
             return;
         }
 
         playerController = playerObj.GetComponent<FirstPersonController>();
-        if (playerController == null)
-            Debug.LogError("[IntroManager] Il Player non ha un FirstPersonController.");
-
         playerAudio = playerObj.GetComponent<AudioSource>();
-        if (playerAudio == null)
-            Debug.LogWarning("[IntroManager] Il Player non ha un AudioSource, gli audio non verranno riprodotti.");
 
-        // blocca subito i controlli
         if (playerController != null)
             playerController.ControlsEnabled = false;
     }
 
-    private void SetupIntroPanel()
+
+    private void SetupUI()
     {
-        if (introPanel != null)
-            introPanel.SetActive(true);
+        introPanel?.SetActive(true);
+
+        if (introMainText != null)
+        {
+            introMainText.gameObject.SetActive(false); // ora ha un delay
+            introMainText.text = introText;
+        }
 
         if (introHintText != null)
+        {
+            introHintText.gameObject.SetActive(false);
             introHintText.text = "";
+        }
+
+        if (extraMessageText != null)
+        {
+            extraMessageText.gameObject.SetActive(false);
+            extraMessageText.text = "";
+        }
     }
+
 
     private void SetupInput()
     {
-        if (continueActionReference == null)
-        {
-            Debug.LogWarning("[IntroManager] Nessuna InputActionReference assegnata per il Continue.");
-            return;
-        }
+        continueAction = continueActionReference?.action;
 
-        continueAction = continueActionReference.action;
         if (continueAction == null)
         {
-            Debug.LogWarning("[IntroManager] ContinueActionReference non ha una action valida.");
+            Debug.LogWarning("[IntroManager] Nessuna InputAction valida per Continue.");
             return;
         }
 
         continueAction.Enable();
         CacheBindingDisplayStrings();
     }
+
 
     private void CacheBindingDisplayStrings()
     {
@@ -159,20 +192,37 @@ public class IntroManager : MonoBehaviour
     }
 
 
-    // ---------------- INTRO FLOW ----------------
+    // ======================================
+    //           INTRO SEQUENCE
+    // ======================================
 
-    private IEnumerator ShowHintAfterDelay()
+    private IEnumerator IntroSequenceRoutine()
     {
-        if (delayBeforeHint > 0f)
+        // 1) Mostra testo principale dopo un delay
+        if (introMainTextDelay > 0)
+            yield return new WaitForSeconds(introMainTextDelay);
+
+        introMainText?.gameObject.SetActive(true);
+
+        // 2) Mostra hint dopo il delay
+        if (delayBeforeHint > 0)
             yield return new WaitForSeconds(delayBeforeHint);
 
-        hintVisible = true;
+        introHintText?.gameObject.SetActive(true);
         UpdateHintText();
+
+        // ⬇️ SOLO ORA si può premere per continuare
+        canContinue = true;
     }
+
 
     private void Update()
     {
         if (!introActive || continueAction == null)
+            return;
+
+        // 🔒 blocca l’input finché l’hint non è apparso
+        if (!canContinue)
             return;
 
         if (!continueAction.WasPressedThisFrame())
@@ -182,38 +232,65 @@ public class IntroManager : MonoBehaviour
         if (control != null)
             useGamepadHint = control.device is Gamepad;
 
-        // SFX di conferma
         if (playerAudio != null && continueSfx != null)
             playerAudio.PlayOneShot(continueSfx);
 
-        EndIntro();
+        StartCoroutine(EndIntroRoutine());
     }
+
 
     private void UpdateHintText()
     {
-        if (!hintVisible || introHintText == null)
+        if (introHintText == null)
             return;
 
         string key = useGamepadHint ? gamepadBinding : keyboardBinding;
         introHintText.text = $"{key} - Continue";
     }
 
-    private void EndIntro()
+
+    private IEnumerator EndIntroRoutine()
     {
         introActive = false;
+        canContinue = false;
 
-        if (introPanel != null)
-            introPanel.SetActive(false);
+        // 1) Spegni subito pannello + testo + hint
+        introPanel?.SetActive(false);
 
+        // 2) Sblocca player
         if (playerController != null)
             playerController.ControlsEnabled = true;
 
-        // musica di gioco
+        // 3) Avvia musica
         if (playerAudio != null && musicOnStart != null)
         {
             playerAudio.clip = musicOnStart;
             playerAudio.loop = true;
             playerAudio.Play();
         }
+
+        // 4) Extra message (se esiste)
+        bool hasExtra =
+            extraMessageText != null &&
+            !string.IsNullOrWhiteSpace(extraMessage) &&
+            extraMessageDuration > 0f;
+
+        if (!hasExtra)
+            yield break;
+
+        // Delay prima della comparsa
+        if (extraMessageDelay > 0)
+            yield return new WaitForSeconds(extraMessageDelay);
+
+        extraMessageText.gameObject.SetActive(true);
+        extraMessageText.text = extraMessage;
+
+        if (playerAudio != null && extraMessageSfx != null)
+            playerAudio.PlayOneShot(extraMessageSfx);
+
+        yield return new WaitForSeconds(extraMessageDuration);
+
+        extraMessageText.text = "";
+        extraMessageText.gameObject.SetActive(false);
     }
 }

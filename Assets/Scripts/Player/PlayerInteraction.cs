@@ -1,42 +1,68 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
+using Sirenix.OdinInspector;
 
 public class PlayerInteraction : MonoBehaviour
 {
-    [Header("Riferimenti")]
-    [SerializeField] private FirstPersonController playerController;
-    [SerializeField] private Camera playerCamera;
+    // ---------------- RIFERIMENTI AUTO ----------------
+    private FirstPersonController playerController;
+    private Camera playerCamera;
 
-    [Header("Interazione")]
+    // ---------------- INTERAZIONE ----------------
+    [BoxGroup("Interaction")]
     [SerializeField] private float interactDistance = 3f;
+
+    [BoxGroup("Interaction")]
     [SerializeField] private LayerMask interactLayerMask = ~0;
 
-    [Header("Input")]
+    // ---------------- INPUT ----------------
+    [BoxGroup("Input")]
     [SerializeField] private InputActionReference interactActionReference;
 
-    [Header("UI")]
-    [SerializeField] private GameObject promptRoot;
-    [SerializeField] private TextMeshProUGUI promptText;        // Nome oggetto (Pigeon / Esamina)
-    [SerializeField] private TextMeshProUGUI interactHintText;  // "E - Interact" / "X - Interact"
-
-    // cache
     private InputAction interactAction;
     private string keyboardBinding = "";
     private string gamepadBinding = "";
-    private bool useGamepadHint = false;   // ultimo device usato per Interact
+    private bool useGamepadHint = false;
 
+    // ---------------- UI ----------------
+    [BoxGroup("UI")]
+    [SerializeField] private GameObject promptRoot;
+
+    [BoxGroup("UI")]
+    [SerializeField] private TextMeshProUGUI promptText;        // Nome oggetto
+
+    [BoxGroup("UI")]
+    [SerializeField] private TextMeshProUGUI interactHintText;  // "E - Interact" / "X - Interact"
+
+
+    private void Awake()
+    {
+        // prendi il controller dal Player
+        playerController = GetComponent<FirstPersonController>();
+        if (playerController == null)
+            Debug.LogError("[PlayerInteraction] Nessun FirstPersonController trovato sullo stesso GameObject.");
+
+        // prendi la camera dal Player → fallback Camera.main
+        playerCamera = GetComponentInChildren<Camera>();
+        if (playerCamera == null)
+            playerCamera = Camera.main;
+
+        if (playerCamera == null)
+            Debug.LogError("[PlayerInteraction] Nessuna Camera trovata (né figlio né Camera.main).");
+    }
 
     private void OnEnable()
     {
-        if (interactActionReference != null)
+        if (interactActionReference == null)
+            return;
+
+        interactAction = interactActionReference.action;
+
+        if (interactAction != null)
         {
-            interactAction = interactActionReference.action;
-            if (interactAction != null)
-            {
-                interactAction.Enable();
-                CacheBindingDisplayStrings();
-            }
+            interactAction.Enable();
+            CacheBindingDisplayStrings();
         }
     }
 
@@ -46,8 +72,8 @@ public class PlayerInteraction : MonoBehaviour
     }
 
     /// <summary>
-    /// Legge tutti i binding dell'azione Interact e salva le stringhe
-    /// leggibili per tastiera e gamepad (senza hardcode).
+    /// Legge i binding dell'azione Interact e salva stringhe leggibili
+    /// per tastiera e gamepad (senza hardcode).
     /// </summary>
     private void CacheBindingDisplayStrings()
     {
@@ -61,11 +87,13 @@ public class PlayerInteraction : MonoBehaviour
         {
             var binding = interactAction.bindings[i];
 
-            // ignoriamo composite tipo WASD
             if (binding.isComposite || binding.isPartOfComposite)
                 continue;
 
-            string display = interactAction.GetBindingDisplayString(i);
+            string display = interactAction.GetBindingDisplayString(
+                i,
+                InputBinding.DisplayStringOptions.DontIncludeInteractions
+            );
 
             if (binding.path.Contains("Keyboard"))
                 keyboardBinding = display;
@@ -73,28 +101,27 @@ public class PlayerInteraction : MonoBehaviour
                 gamepadBinding = display;
         }
 
-        // fallback minimal, nel caso non trovassimo nulla
         if (string.IsNullOrEmpty(keyboardBinding))
             keyboardBinding = interactAction.name;
 
         if (string.IsNullOrEmpty(gamepadBinding))
-            gamepadBinding = interactAction.name;
+            gamepadBinding = keyboardBinding;
     }
 
 
     private void Update()
     {
-        if (!playerController || !playerCamera || interactAction == null)
+        if (playerController == null || playerCamera == null || interactAction == null)
             return;
 
-        // ---------- 1) CINEMATICA IN CORSO ----------
+        // 1) CINEMATICA IN CORSO
         if (CinematicSequence.IsAnyCinematicPlaying)
         {
             SetPromptVisible(false);
             return;
         }
 
-        // ---------- 2) DIALOGO IN CORSO ----------
+        // 2) DIALOGO IN CORSO
         if (DialogueSystem.Instance != null && DialogueSystem.Instance.IsOpen)
         {
             SetPromptVisible(false);
@@ -105,20 +132,19 @@ public class PlayerInteraction : MonoBehaviour
             return;
         }
 
-        // se arriviamo qui, il prompt può essere acceso
+        // se arriviamo qui, il prompt può essere visibile
         SetPromptVisible(true);
 
-        // ---------- 3) PLAYER BLOCCATO ----------
+        // 3) PLAYER BLOCCATO
         if (!playerController.ControlsEnabled)
         {
             ClearTexts();
             return;
         }
 
-        // ---------- 4) INTERAZIONE NORMALE ----------
+        // 4) INTERAZIONE NORMALE
         bool interactPressed = interactAction.WasPressedThisFrame();
 
-        // se in questo frame l'azione è stata premuta, aggiorniamo il tipo di device
         if (interactPressed)
         {
             var control = interactAction.activeControl;
@@ -135,7 +161,7 @@ public class PlayerInteraction : MonoBehaviour
 
         if (Physics.Raycast(ray, out RaycastHit hit, interactDistance, interactLayerMask, QueryTriggerInteraction.Collide))
         {
-            // ---- CINEMATIC ----
+            // --- CINEMATIC ---
             foreach (var seq in CinematicSequence.AllSequences)
             {
                 if (seq != null && seq.interactionCollider == hit.collider)
@@ -143,13 +169,13 @@ public class PlayerInteraction : MonoBehaviour
                     ShowTexts(seq.interactionLabel);
 
                     if (interactPressed)
-                        seq.Play(playerController, playerCamera);
+                        seq.PlayFromInteraction(playerController, playerCamera);
 
                     return;
                 }
             }
 
-            // ---- EXAMINE ----
+            // --- EXAMINE ---
             foreach (var ex in ExamineObject.AllExaminables)
             {
                 if (ex != null && ex.interactionCollider == hit.collider)
@@ -165,7 +191,7 @@ public class PlayerInteraction : MonoBehaviour
             }
         }
 
-        // ---------- 5) NON STO GUARDANDO NIENTE ----------
+        // 5) NON STO GUARDANDO NIENTE
         ClearTexts();
     }
 

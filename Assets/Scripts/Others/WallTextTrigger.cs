@@ -1,8 +1,7 @@
 using UnityEngine;
+using Sirenix.OdinInspector;
 
 public class WallTextTrigger : MonoBehaviour
 {
-    [Header("Text To Show")]
-    [TextArea]
-    public string message;
+    [TextArea] public string message;
 }
