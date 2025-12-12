@@ -61,6 +61,14 @@ public class CinematicSequence : MonoBehaviour
     [BoxGroup("Audio")]
     [SerializeField] private AudioClip[] sfxClips;
 
+    // ---------------- QUEST ----------------
+    [BoxGroup("Quest")]
+    [Tooltip("Se true, quando la cinematic finisce può avanzare lo step della quest.")]
+    public bool advanceQuestOnEnd = false;
+
+    [BoxGroup("Quest"), ShowIf("advanceQuestOnEnd"), MinValue(0)]
+    [Tooltip("Indici dei clip che, quando terminano, fanno avanzare la quest.")]
+    public int[] questAdvanceClipIndices;
 
     // ---------------- OPTIONAL ----------------
     [BoxGroup("Optional")]
@@ -86,7 +94,6 @@ public class CinematicSequence : MonoBehaviour
     private int currentClipIndex;
     private bool sequenceCompleted;
 
-    // “play una volta” per canale
     private bool interactionUsedOnce;
     private bool triggerUsedOnce;
 
@@ -107,7 +114,6 @@ public class CinematicSequence : MonoBehaviour
         if (cinematicCamera)
             cinematicCamera.enabled = false;
 
-        // interactionCollider: NON lo tocchiamo, può essere normale box
         // triggerCollider: deve essere trigger + forwarder
         if (triggerCollider)
         {
@@ -142,9 +148,23 @@ public class CinematicSequence : MonoBehaviour
         }
 
         if (clips != null && clips.Length > 0)
+        {
             currentClipIndex = Mathf.Clamp(startClipIndex, 0, clips.Length - 1);
+
+            // Clamp anche per gli indici di quest
+            if (questAdvanceClipIndices != null && questAdvanceClipIndices.Length > 0)
+            {
+                for (int i = 0; i < questAdvanceClipIndices.Length; i++)
+                {
+                    questAdvanceClipIndices[i] =
+                        Mathf.Clamp(questAdvanceClipIndices[i], 0, clips.Length - 1);
+                }
+            }
+        }
         else
+        {
             currentClipIndex = 0;
+        }
     }
 
 
@@ -256,14 +276,48 @@ public class CinematicSequence : MonoBehaviour
         if (activateDuringCinematic)
             activateDuringCinematic.SetActive(false);
 
-        // chiudi eventuale dialogo aperto
         if (DialogueSystem.Instance != null)
             DialogueSystem.Instance.ForceCloseDialogue();
+
+        // ---------- QUEST HOOK ----------
+        HandleQuestAdvance();
 
         HandleSequenceAdvance();
 
         isPlaying = false;
         allowEvents = false;
+    }
+
+    private void HandleQuestAdvance()
+    {
+        if (!advanceQuestOnEnd || QuestManager.Instance == null)
+            return;
+
+        // Nessuna clip definita → mantieni il comportamento vecchio (sempre avanza)
+        if (clips == null || clips.Length == 0)
+        {
+            QuestManager.Instance.AdvanceStep();
+            return;
+        }
+
+        // Se non hai messo indici specifici, manteniamo il comportamento vecchio
+        if (questAdvanceClipIndices == null || questAdvanceClipIndices.Length == 0)
+        {
+            QuestManager.Instance.AdvanceStep();
+            return;
+        }
+
+        int safeCurrent = Mathf.Clamp(currentClipIndex, 0, clips.Length - 1);
+
+        // Se l'indice corrente è uno di quelli configurati, avanza la quest
+        for (int i = 0; i < questAdvanceClipIndices.Length; i++)
+        {
+            if (questAdvanceClipIndices[i] == safeCurrent)
+            {
+                QuestManager.Instance.AdvanceStep();
+                break;
+            }
+        }
     }
 
     private void HandleSequenceAdvance()
@@ -280,10 +334,9 @@ public class CinematicSequence : MonoBehaviour
         }
         else if (!advanceOnEachPlay)
         {
-            // niente advance, ma se abbiamo consumato il canale “solo una volta”
-            // lasciamo comunque attivi i collider (potranno usarli altri canali se non flaggati)
-            if (!playInteractionOnlyOnce && !playTriggerOnlyOnce)
-                return;
+            // se non avanziamo automaticamente e non c'è "playOnlyOnce per sequence"
+            // non facciamo nulla qui: il gating è sui boolean per canale
+            return;
         }
     }
 
@@ -333,7 +386,6 @@ public class CinematicSequence : MonoBehaviour
         PlayFromTrigger();
     }
 }
-
 
 /// <summary>
 /// Helper su GameObject del triggerCollider che notifica la CinematicSequence.

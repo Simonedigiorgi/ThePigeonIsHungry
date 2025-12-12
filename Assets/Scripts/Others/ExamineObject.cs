@@ -24,6 +24,11 @@ public class ExamineObject : MonoBehaviour
     [Tooltip("Nome della scena da caricare.")]
     public string targetSceneName;
 
+    // ---------------- QUEST ----------------
+    [BoxGroup("Quest")]
+    [Tooltip("Se true, quando l'esame è completo avanza di uno lo step della quest.")]
+    public bool advanceQuestOnExamineEnd = false;
+
     // ---------------- INTERNAL ----------------
     [ShowInInspector, ReadOnly]
     private bool hasInteracted = false;
@@ -53,10 +58,11 @@ public class ExamineObject : MonoBehaviour
             if (string.IsNullOrEmpty(targetSceneName))
             {
                 Debug.LogWarning($"[ExamineObject] targetSceneName non impostato su '{name}'");
+                hasInteracted = false;
                 return;
             }
 
-            // 🔇 FERMA TUTTI GLI AUDIO
+            // Ferma l'audio
             AudioListener.pause = true;
 
             SceneManager.LoadScene(targetSceneName);
@@ -64,14 +70,37 @@ public class ExamineObject : MonoBehaviour
         }
 
         // ----------------------------------------------
-        // DIALOGO
+        // NESSUN DIALOGO → SOLO QUEST
         // ----------------------------------------------
         if (dialogue == null || DialogueSystem.Instance == null)
+        {
+            HandleQuestUpdate();
+            hasInteracted = false; // permetti di riesaminare se serve
             return;
+        }
 
+        // ----------------------------------------------
+        // DIALOGO + QUEST
+        // ----------------------------------------------
         DialogueSystem.Instance.StartDialogue(dialogue, true, () =>
         {
+            // callback quando il dialogo finisce
             hasInteracted = false;
+            HandleQuestUpdate();
         });
+    }
+
+    /// <summary>
+    /// Aggiorna lo stato della quest usando il QuestManager (se presente).
+    /// </summary>
+    private void HandleQuestUpdate()
+    {
+        if (!advanceQuestOnExamineEnd)
+            return;
+
+        if (QuestManager.Instance == null)
+            return;
+
+        QuestManager.Instance.AdvanceStep();
     }
 }
