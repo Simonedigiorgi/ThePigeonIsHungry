@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Sirenix.OdinInspector;
+using UnityEngine.Events;
 
 public class ExamineObject : MonoBehaviour
 {
@@ -10,6 +11,10 @@ public class ExamineObject : MonoBehaviour
     // ---------------- INTERACTION ----------------
     [BoxGroup("Interaction")]
     public Collider interactionCollider;
+
+    [BoxGroup("Interaction")]
+    [Tooltip("Se true, l'oggetto può essere interagito una sola volta.")]
+    public bool interactOnlyOnce = false;
 
     // ---------------- DIALOGUE ----------------
     [BoxGroup("Dialogue")]
@@ -29,10 +34,14 @@ public class ExamineObject : MonoBehaviour
     [Tooltip("Se true, quando l'esame è completo avanza di uno lo step della quest.")]
     public bool advanceQuestOnExamineEnd = false;
 
+    // ---------------- EVENTS ----------------
+    [BoxGroup("Events")]
+    [Tooltip("Evento chiamato quando il player interagisce con questo oggetto.")]
+    public UnityEvent onInteract;
+
     // ---------------- INTERNAL ----------------
     [ShowInInspector, ReadOnly]
     private bool hasInteracted = false;
-
 
     private void Reset()
     {
@@ -42,13 +51,22 @@ public class ExamineObject : MonoBehaviour
     private void OnEnable() => AllExaminables.Add(this);
     private void OnDisable() => AllExaminables.Remove(this);
 
-
     public void Examine()
     {
-        if (hasInteracted)
+        // ❌ già usato e limitato a una sola interazione
+        if (hasInteracted && interactOnlyOnce)
             return;
 
         hasInteracted = true;
+
+        // ✅ evento sempre chiamato su interazione valida
+        onInteract?.Invoke();
+
+        // ✅ SOLUZIONE A:
+        // se è one-shot, disabilitiamo subito il collider
+        // così il raycast non lo colpisce più e il prompt sparisce
+        if (interactOnlyOnce && interactionCollider != null)
+            interactionCollider.enabled = false;
 
         // ----------------------------------------------
         // CAMBIO SCENA
@@ -58,13 +76,12 @@ public class ExamineObject : MonoBehaviour
             if (string.IsNullOrEmpty(targetSceneName))
             {
                 Debug.LogWarning($"[ExamineObject] targetSceneName non impostato su '{name}'");
-                hasInteracted = false;
+                if (!interactOnlyOnce)
+                    hasInteracted = false;
                 return;
             }
 
-            // Ferma l'audio
             AudioListener.pause = true;
-
             SceneManager.LoadScene(targetSceneName);
             return;
         }
@@ -75,7 +92,10 @@ public class ExamineObject : MonoBehaviour
         if (dialogue == null || DialogueSystem.Instance == null)
         {
             HandleQuestUpdate();
-            hasInteracted = false; // permetti di riesaminare se serve
+
+            if (!interactOnlyOnce)
+                hasInteracted = false;
+
             return;
         }
 
@@ -84,15 +104,13 @@ public class ExamineObject : MonoBehaviour
         // ----------------------------------------------
         DialogueSystem.Instance.StartDialogue(dialogue, true, () =>
         {
-            // callback quando il dialogo finisce
-            hasInteracted = false;
             HandleQuestUpdate();
+
+            if (!interactOnlyOnce)
+                hasInteracted = false;
         });
     }
 
-    /// <summary>
-    /// Aggiorna lo stato della quest usando il QuestManager (se presente).
-    /// </summary>
     private void HandleQuestUpdate()
     {
         if (!advanceQuestOnExamineEnd)
