@@ -27568,3 +27568,10 @@ AnimationClip:
     floatParameter: 0
     intParameter: 0
     messageOptions: 0
+  - time: 8.166667
+    functionName: TriggerDialogue
+    data: 
+    objectReferenceParameter: {fileID: 11400000, guid: 8ede3accf468e6848bf476b628f45c3b, type: 2}
+    floatParameter: 0
+    intParameter: 0
+    messageOptions: 0
