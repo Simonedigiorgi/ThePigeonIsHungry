@@ -40,7 +40,8 @@ MonoBehaviour:
   m_RendererFeatures:
   - {fileID: 5554233046797042475}
   - {fileID: -3455318587193190595}
-  m_RendererFeatureMap: 2bc3124a8799144d3d978b500d3e0cd0
+  - {fileID: 2025981179073974859}
+  m_RendererFeatureMap: 2bc3124a8799144d3d978b500d3e0cd04bd254f425bb1d1c
   m_UseNativeRenderPass: 0
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
@@ -69,6 +70,67 @@ MonoBehaviour:
   m_DepthTextureFormat: 0
   m_AccurateGbufferNormals: 0
   m_IntermediateTextureMode: 1
+--- !u!114 &2025981179073974859
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cc1203593d2d2c9439448f31c60fe0a0, type: 3}
+  m_Name: Noir
+  m_EditorClassIdentifier: FronkonGames.Retro.Noir::FronkonGames.Retro.Noir.Noir
+  m_Active: 1
+  settings:
+    intensity: 1
+    method: 0
+    noirIntensity: 1
+    ditherSpread: 1
+    ditherDensity: 1
+    ditherColorBlend: 16
+    dotScreenGridSize: 92
+    dotScreenLuminanceGain: 0.3
+    dotScreenColorBlend: 13
+    halftoneSize: 2
+    halftoneAngle: 30
+    halftoneThreshold: 0.75
+    linesCount: 4
+    linesGranularity: 0.25
+    linesThreshold: 0.5
+    linesColorBlend: 16
+    halftoneColorBlend: 16
+    duoToneIntensity: 1
+    duoToneBrightnessColor: {r: 1, g: 1, b: 1, a: 1}
+    duoToneDarknessColor: {r: 0.05, g: 0.05, b: 0.05, a: 1}
+    duoToneThreshold: 0.5
+    duoToneLuminanceMinRange: 0
+    duoToneLuminanceMaxRange: 1
+    duoToneSoftness: 0.5
+    duoToneExposure: 1
+    duoToneEmbossDark: 0.05
+    duoToneColorBlend: 16
+    sepiaIntensity: 0
+    chromaticAberrationIntensity: 0
+    blotchesIntensity: 0
+    blotchesSpeed: 10
+    vignetteIntensity: 1
+    vignetteSize: 1
+    filmGrainIntensity: 0
+    filmGrainSpeed: 0.5
+    vignetteColor: {r: 0, g: 0, b: 0, a: 1}
+    vignetteSmoothness: 0.5
+    vignetteTimeVariation: 0
+    scratchesIntensity: 0
+    scratchesSpeed: 0.5
+    brightness: 0
+    contrast: 1
+    gamma: 1
+    hue: 0
+    saturation: 1
+    affectSceneView: 0
+    whenToInsert: 550
 --- !u!114 &5554233046797042475
 MonoBehaviour:
   m_ObjectHideFlags: 0

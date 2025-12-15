@@ -535,7 +535,6 @@ MonoBehaviour:
   - {fileID: -7682581117232404072}
   - {fileID: 2511883864664832267}
   - {fileID: -100877745867630677}
-  - {fileID: 6680460544358330487}
 --- !u!114 &42938912218419713
 MonoBehaviour:
   m_ObjectHideFlags: 3
@@ -635,7 +634,7 @@ MonoBehaviour:
     m_Value: 0
   pixelSize:
     m_OverrideState: 1
-    m_Value: 2
+    m_Value: 1
   randomWear:
     m_OverrideState: 1
     m_Value: 0.2
