@@ -7,7 +7,7 @@ using UnityEngine.Events;
 [RequireComponent(typeof(Animation))]
 public class CinematicSequence : MonoBehaviour
 {
-    // ---------------- INTERACTION (RAYCAST) ----------------
+    // ---------------- INTERACTION ----------------
     [BoxGroup("Interaction")]
     public string interactionLabel = "Cinematic";
 
@@ -19,7 +19,7 @@ public class CinematicSequence : MonoBehaviour
     [Tooltip("Se true, questa cinematic può essere avviata dal raycast solo una volta.")]
     public bool playInteractionOnlyOnce = false;
 
-    // ---------------- TRIGGER COLLIDER ----------------
+    // ---------------- TRIGGER ----------------
     [BoxGroup("Trigger")]
     [Tooltip("Collider trigger opzionale che avvia automaticamente la cinematic quando il Player entra.")]
     public BoxCollider triggerCollider;
@@ -38,11 +38,9 @@ public class CinematicSequence : MonoBehaviour
     [ReadOnly] public AnimationClip[] clips;
 
     [BoxGroup("Animation"), MinValue(0)]
-    [Tooltip("Indice di partenza nella lista Clips.")]
     public int startClipIndex = 0;
 
     [BoxGroup("Animation")]
-    [Tooltip("Se true, ad ogni attivazione verrà riprodotta la clip successiva nella lista Clips.")]
     public bool advanceOnEachPlay = false;
 
     // ---------------- ACTOR ----------------
@@ -58,25 +56,24 @@ public class CinematicSequence : MonoBehaviour
 
     // ---------------- QUEST ----------------
     [BoxGroup("Quest")]
-    [Tooltip("Se true, quando la cinematic finisce può avanzare lo step della quest.")]
     public bool advanceQuestOnEnd = false;
 
-    [BoxGroup("Quest"), ShowIf("advanceQuestOnEnd"), MinValue(0)]
-    [Tooltip("Indici dei clip che, quando terminano, fanno avanzare la quest.")]
+    [BoxGroup("Quest"), ShowIf(nameof(advanceQuestOnEnd)), MinValue(0)]
     public int[] questAdvanceClipIndices;
 
     // ---------------- EVENTS ----------------
     [BoxGroup("Events")]
-    [Tooltip("Eventi richiamabili da Animation Event passando un indice (0..N-1).")]
-    [SerializeField] private UnityEvent[] timedEvents;
+    [Tooltip("Evento richiamabile da Animation Event (VFX, SFX, SetActive, ecc.).")]
+    public UnityEvent onTimedEvent;
 
     [BoxGroup("Events")]
-    [Tooltip("Evento chiamato quando la cinematic parte.")]
     public UnityEvent onCinematicStart;
 
     [BoxGroup("Events")]
-    [Tooltip("Evento chiamato quando la cinematic finisce (prima di sbloccare/chiudere).")]
     public UnityEvent onCinematicEnd;
+
+    // Animation Event (no parametri)
+    public void TriggerTimedEvent() => onTimedEvent?.Invoke();
 
     // ---------------- INTERNAL ----------------
     private Animation anim;
@@ -97,6 +94,16 @@ public class CinematicSequence : MonoBehaviour
     private static int playingCount = 0;
     public static bool IsAnyCinematicPlaying => playingCount > 0;
 
+    // 🔔 evento globale (HUD / crosshair / UI)
+    public static event System.Action<bool> OnAnyCinematicPlayingChanged;
+
+    private static void NotifyCinematicStateChanged(bool wasPlaying)
+    {
+        bool isPlayingNow = IsAnyCinematicPlaying;
+        if (wasPlaying != isPlayingNow)
+            OnAnyCinematicPlayingChanged?.Invoke(isPlayingNow);
+    }
+
     private void OnEnable() => AllSequences.Add(this);
     private void OnDisable() => AllSequences.Remove(this);
 
@@ -109,11 +116,9 @@ public class CinematicSequence : MonoBehaviour
         if (cinematicCamera)
             cinematicCamera.enabled = false;
 
-        // triggerCollider: deve essere trigger + forwarder
         if (triggerCollider)
         {
             triggerCollider.isTrigger = true;
-
             var forwarder = triggerCollider.GetComponent<CinematicTriggerForwarder>();
             if (forwarder == null)
                 forwarder = triggerCollider.gameObject.AddComponent<CinematicTriggerForwarder>();
@@ -126,42 +131,35 @@ public class CinematicSequence : MonoBehaviour
         interactionUsedOnce = false;
         triggerUsedOnce = false;
 
-        // Se clips è vuoto, lo riempiamo dalle AnimationState
         if (clips == null || clips.Length == 0)
         {
             var list = new List<AnimationClip>();
             foreach (AnimationState state in anim)
             {
-                if (state != null && state.clip != null && !list.Contains(state.clip))
+                if (state?.clip != null && !list.Contains(state.clip))
                     list.Add(state.clip);
             }
             clips = list.ToArray();
         }
 
-        if (clips != null && clips.Length > 0)
-        {
-            currentClipIndex = Mathf.Clamp(startClipIndex, 0, clips.Length - 1);
+        currentClipIndex = (clips != null && clips.Length > 0)
+            ? Mathf.Clamp(startClipIndex, 0, clips.Length - 1)
+            : 0;
 
-            // Clamp anche per gli indici di quest
-            if (questAdvanceClipIndices != null && questAdvanceClipIndices.Length > 0)
-            {
-                for (int i = 0; i < questAdvanceClipIndices.Length; i++)
-                    questAdvanceClipIndices[i] = Mathf.Clamp(questAdvanceClipIndices[i], 0, clips.Length - 1);
-            }
-        }
-        else
+        if (clips != null && questAdvanceClipIndices != null)
         {
-            currentClipIndex = 0;
+            for (int i = 0; i < questAdvanceClipIndices.Length; i++)
+                questAdvanceClipIndices[i] = Mathf.Clamp(questAdvanceClipIndices[i], 0, clips.Length - 1);
         }
     }
 
     // ======================================================
-    //                    PUBLIC API
+    // PLAY
     // ======================================================
 
     public void PlayFromInteraction(FirstPersonController controller, Camera cam)
     {
-        PlayInternal(controller, cam, fromTrigger: false);
+        PlayInternal(controller, cam, false);
     }
 
     public void PlayFromTrigger()
@@ -170,33 +168,14 @@ public class CinematicSequence : MonoBehaviour
         var cam = controller != null ? controller.GetComponentInChildren<Camera>() : null;
 
         if (controller != null && cam != null)
-            PlayInternal(controller, cam, fromTrigger: true);
+            PlayInternal(controller, cam, true);
     }
-
-    /// <summary>
-    /// Chiamabile da Animation Event (int): esegue timedEvents[index].
-    /// </summary>
-    public void TriggerTimedEventByIndex(int index)
-    {
-        if (!allowEvents)
-            return;
-
-        if (timedEvents == null || index < 0 || index >= timedEvents.Length)
-            return;
-
-        timedEvents[index]?.Invoke();
-    }
-
-    // ======================================================
-    //                   CORE PLAY LOGIC
-    // ======================================================
 
     private void PlayInternal(FirstPersonController controller, Camera cam, bool fromTrigger)
     {
         if (isPlaying || anim == null || sequenceCompleted)
             return;
 
-        // “play una sola volta” per canale
         if (fromTrigger)
         {
             if (playTriggerOnlyOnce && triggerUsedOnce) return;
@@ -208,7 +187,10 @@ public class CinematicSequence : MonoBehaviour
             if (playInteractionOnlyOnce) interactionUsedOnce = true;
         }
 
+        bool wasPlaying = IsAnyCinematicPlaying;
         playingCount++;
+        NotifyCinematicStateChanged(wasPlaying);
+
         isPlaying = true;
         allowEvents = true;
 
@@ -222,22 +204,9 @@ public class CinematicSequence : MonoBehaviour
         onCinematicStart?.Invoke();
 
         string clipName = GetCurrentClipName();
-        if (!string.IsNullOrEmpty(clipName))
-            anim.Play(clipName);
-        else
-            anim.Play();
+        anim.Play(string.IsNullOrEmpty(clipName) ? null : clipName);
 
         StartCoroutine(WaitForEnd());
-    }
-
-    private string GetCurrentClipName()
-    {
-        if (clips != null && clips.Length > 0)
-        {
-            int idx = Mathf.Clamp(currentClipIndex, 0, clips.Length - 1);
-            return clips[idx] != null ? clips[idx].name : null;
-        }
-        return null;
     }
 
     private IEnumerator WaitForEnd()
@@ -250,25 +219,31 @@ public class CinematicSequence : MonoBehaviour
 
     private void Stop()
     {
-        // End event mentre siamo ancora "in cinematic"
         onCinematicEnd?.Invoke();
 
-        // Chiudi dialoghi eventuali
         if (DialogueSystem.Instance != null)
             DialogueSystem.Instance.ForceCloseDialogue();
 
-        // Quest prima dell’advance clip
         HandleQuestAdvance();
         HandleSequenceAdvance();
 
-        // Ripristino camera / controlli
         if (cinematicCamera) cinematicCamera.enabled = false;
         if (playerCamera) playerCamera.enabled = true;
         if (playerController) playerController.ControlsEnabled = true;
 
+        bool wasPlaying = IsAnyCinematicPlaying;
         isPlaying = false;
         allowEvents = false;
         playingCount = Mathf.Max(0, playingCount - 1);
+        NotifyCinematicStateChanged(wasPlaying);
+    }
+
+    private string GetCurrentClipName()
+    {
+        if (clips != null && clips.Length > 0)
+            return clips[Mathf.Clamp(currentClipIndex, 0, clips.Length - 1)]?.name;
+
+        return null;
     }
 
     private void HandleQuestAdvance()
@@ -276,25 +251,15 @@ public class CinematicSequence : MonoBehaviour
         if (!advanceQuestOnEnd || QuestManager.Instance == null)
             return;
 
-        // Nessuna clip definita → comportamento legacy: sempre avanza
-        if (clips == null || clips.Length == 0)
-        {
-            QuestManager.Instance.AdvanceStep();
-            return;
-        }
-
-        // Nessun indice specificato → comportamento legacy: sempre avanza
         if (questAdvanceClipIndices == null || questAdvanceClipIndices.Length == 0)
         {
             QuestManager.Instance.AdvanceStep();
             return;
         }
 
-        int safeCurrent = Mathf.Clamp(currentClipIndex, 0, clips.Length - 1);
-
         for (int i = 0; i < questAdvanceClipIndices.Length; i++)
         {
-            if (questAdvanceClipIndices[i] == safeCurrent)
+            if (questAdvanceClipIndices[i] == currentClipIndex)
             {
                 QuestManager.Instance.AdvanceStep();
                 break;
@@ -304,28 +269,23 @@ public class CinematicSequence : MonoBehaviour
 
     private void HandleSequenceAdvance()
     {
-        if (clips != null && clips.Length > 0 && advanceOnEachPlay)
+        if (!advanceOnEachPlay || clips == null || clips.Length == 0)
+            return;
+
+        currentClipIndex++;
+
+        if (currentClipIndex >= clips.Length)
         {
-            currentClipIndex++;
-
-            if (currentClipIndex >= clips.Length)
-            {
-                sequenceCompleted = true;
-                DisableAllColliders();
-            }
+            sequenceCompleted = true;
+            if (interactionCollider) interactionCollider.enabled = false;
+            if (triggerCollider) triggerCollider.enabled = false;
         }
-    }
-
-    private void DisableAllColliders()
-    {
-        if (interactionCollider) interactionCollider.enabled = false;
-        if (triggerCollider) triggerCollider.enabled = false;
     }
 
     // ---------------- ANIMATION EVENTS ----------------
     public void PlaySfx(int index)
     {
-        if (!allowEvents || !audioSource) return;
+        if (!allowEvents || audioSource == null) return;
         if (sfxClips == null || index < 0 || index >= sfxClips.Length) return;
 
         audioSource.PlayOneShot(sfxClips[index]);
@@ -333,34 +293,29 @@ public class CinematicSequence : MonoBehaviour
 
     public void ActorSetTrigger(string triggerName)
     {
-        if (!allowEvents || !actor || string.IsNullOrEmpty(triggerName)) return;
+        if (!allowEvents || actor == null || string.IsNullOrEmpty(triggerName)) return;
         actor.SetTrigger(triggerName);
     }
 
     public void ActorPlayState(string stateName)
     {
-        if (!allowEvents || !actor || string.IsNullOrEmpty(stateName)) return;
+        if (!allowEvents || actor == null || string.IsNullOrEmpty(stateName)) return;
         actor.CrossFade(stateName, 0.1f);
     }
 
+    // ✅ USATO DAGLI ANIMATION EVENT (con parametro)
     public void TriggerDialogue(DialogueData data)
     {
         if (!allowEvents || data == null || DialogueSystem.Instance == null) return;
         DialogueSystem.Instance.StartDialogue(data, false, null);
     }
 
-    // ======================================================
-    //          CHIAMATO DAL FORWARDER DEL TRIGGER
-    // ======================================================
     public void OnTriggerEnteredByPlayer()
     {
         PlayFromTrigger();
     }
 }
 
-/// <summary>
-/// Helper su GameObject del triggerCollider che notifica la CinematicSequence.
-/// </summary>
 public class CinematicTriggerForwarder : MonoBehaviour
 {
     private CinematicSequence sequence;
@@ -372,10 +327,7 @@ public class CinematicTriggerForwarder : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (sequence == null)
-            return;
-
-        if (!other.CompareTag("Player"))
+        if (sequence == null || !other.CompareTag("Player"))
             return;
 
         sequence.OnTriggerEnteredByPlayer();

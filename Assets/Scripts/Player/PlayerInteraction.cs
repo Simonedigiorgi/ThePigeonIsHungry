@@ -1,10 +1,13 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
-using TMPro;
 using Sirenix.OdinInspector;
 
 public class PlayerInteraction : MonoBehaviour
 {
+    // ---------------- EVENTS ----------------
+    public event System.Action<string, string> OnShowPrompt;
+    public event System.Action OnHidePrompt;
+
     // ---------------- RIFERIMENTI AUTO ----------------
     private FirstPersonController playerController;
     private Camera playerCamera;
@@ -25,31 +28,18 @@ public class PlayerInteraction : MonoBehaviour
     private string gamepadBinding = "";
     private bool useGamepadHint = false;
 
-    // ---------------- UI ----------------
-    [BoxGroup("UI")]
-    [SerializeField] private GameObject promptRoot;
-
-    [BoxGroup("UI")]
-    [SerializeField] private TextMeshProUGUI promptText;        // Nome oggetto
-
-    [BoxGroup("UI")]
-    [SerializeField] private TextMeshProUGUI interactHintText;  // "E - Interact" / "X - Interact"
-
-
     private void Awake()
     {
-        // prendi il controller dal Player
         playerController = GetComponent<FirstPersonController>();
         if (playerController == null)
-            Debug.LogError("[PlayerInteraction] Nessun FirstPersonController trovato sullo stesso GameObject.");
+            Debug.LogError("[PlayerInteraction] Nessun FirstPersonController trovato.");
 
-        // prendi la camera dal Player → fallback Camera.main
         playerCamera = GetComponentInChildren<Camera>();
         if (playerCamera == null)
             playerCamera = Camera.main;
 
         if (playerCamera == null)
-            Debug.LogError("[PlayerInteraction] Nessuna Camera trovata (né figlio né Camera.main).");
+            Debug.LogError("[PlayerInteraction] Nessuna Camera trovata.");
     }
 
     private void OnEnable()
@@ -71,10 +61,6 @@ public class PlayerInteraction : MonoBehaviour
         interactAction?.Disable();
     }
 
-    /// <summary>
-    /// Legge i binding dell'azione Interact e salva stringhe leggibili
-    /// per tastiera e gamepad (senza hardcode).
-    /// </summary>
     private void CacheBindingDisplayStrings()
     {
         keyboardBinding = "";
@@ -108,7 +94,6 @@ public class PlayerInteraction : MonoBehaviour
             gamepadBinding = keyboardBinding;
     }
 
-
     private void Update()
     {
         if (playerController == null || playerCamera == null || interactAction == null)
@@ -117,14 +102,14 @@ public class PlayerInteraction : MonoBehaviour
         // 1) CINEMATICA IN CORSO
         if (CinematicSequence.IsAnyCinematicPlaying)
         {
-            SetPromptVisible(false);
+            OnHidePrompt?.Invoke();
             return;
         }
 
         // 2) DIALOGO IN CORSO
         if (DialogueSystem.Instance != null && DialogueSystem.Instance.IsOpen)
         {
-            SetPromptVisible(false);
+            OnHidePrompt?.Invoke();
 
             if (interactAction.WasPressedThisFrame())
                 DialogueSystem.Instance.Advance();
@@ -132,17 +117,13 @@ public class PlayerInteraction : MonoBehaviour
             return;
         }
 
-        // se arriviamo qui, il prompt può essere visibile
-        SetPromptVisible(true);
-
         // 3) PLAYER BLOCCATO
         if (!playerController.ControlsEnabled)
         {
-            ClearTexts();
+            OnHidePrompt?.Invoke();
             return;
         }
 
-        // 4) INTERAZIONE NORMALE
         bool interactPressed = interactAction.WasPressedThisFrame();
 
         if (interactPressed)
@@ -166,7 +147,7 @@ public class PlayerInteraction : MonoBehaviour
             {
                 if (seq != null && seq.interactionCollider == hit.collider)
                 {
-                    ShowTexts(seq.interactionLabel);
+                    ShowPrompt(seq.interactionLabel);
 
                     if (interactPressed)
                         seq.PlayFromInteraction(playerController, playerCamera);
@@ -181,7 +162,7 @@ public class PlayerInteraction : MonoBehaviour
                 if (ex != null && ex.interactionCollider == hit.collider)
                 {
                     string label = ex.dialogue != null ? ex.dialogue.speakerName : "Esamina";
-                    ShowTexts(label);
+                    ShowPrompt(label);
 
                     if (interactPressed)
                         ex.Examine();
@@ -192,34 +173,12 @@ public class PlayerInteraction : MonoBehaviour
         }
 
         // 5) NON STO GUARDANDO NIENTE
-        ClearTexts();
+        OnHidePrompt?.Invoke();
     }
 
-
-    private void ShowTexts(string objectLabel)
+    private void ShowPrompt(string label)
     {
-        if (promptText != null)
-            promptText.text = objectLabel;
-
-        if (interactHintText != null)
-        {
-            string key = useGamepadHint ? gamepadBinding : keyboardBinding;
-            interactHintText.text = $"{key} - Interact";
-        }
-    }
-
-    private void ClearTexts()
-    {
-        if (promptText != null)
-            promptText.text = "";
-
-        if (interactHintText != null)
-            interactHintText.text = "";
-    }
-
-    private void SetPromptVisible(bool visible)
-    {
-        if (promptRoot != null && promptRoot.activeSelf != visible)
-            promptRoot.SetActive(visible);
+        string key = useGamepadHint ? gamepadBinding : keyboardBinding;
+        OnShowPrompt?.Invoke(label, key);
     }
 }

@@ -1,18 +1,16 @@
 using UnityEngine;
-using TMPro;
 using Sirenix.OdinInspector;
 
 [RequireComponent(typeof(CharacterController))]
 public class PlayerWallTextHandler : MonoBehaviour
 {
-    [BoxGroup("UI")]
-    [SerializeField] private TextMeshProUGUI wallText;
+    // ---------------- EVENTS ----------------
+    public event System.Action<string> OnShowWallText;
+    public event System.Action OnHideWallText;
 
     private string currentMessage;
     private bool hasWallTextThisFrame;
 
-    // Viene chiamato da Unity su OGNI componente sullo stesso GameObject
-    // che ha il metodo OnControllerColliderHit, se c'è un CharacterController.
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
         var wallTrigger = hit.collider.GetComponent<WallTextTrigger>();
@@ -21,23 +19,19 @@ public class PlayerWallTextHandler : MonoBehaviour
 
         hasWallTextThisFrame = true;
 
-        if (wallText != null && currentMessage != wallTrigger.message)
+        if (currentMessage != wallTrigger.message)
         {
             currentMessage = wallTrigger.message;
-            wallText.text = currentMessage;
+            OnShowWallText?.Invoke(currentMessage);
         }
     }
 
     private void LateUpdate()
     {
-        // Se in questo frame non abbiamo toccato nessun muro con WallTextTrigger,
-        // e c'era un messaggio attivo, lo puliamo.
         if (!hasWallTextThisFrame && !string.IsNullOrEmpty(currentMessage))
         {
-            if (wallText != null)
-                wallText.text = "";
-
             currentMessage = null;
+            OnHideWallText?.Invoke();
         }
 
         hasWallTextThisFrame = false;
