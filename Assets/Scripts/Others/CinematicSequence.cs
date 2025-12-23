@@ -51,16 +51,6 @@ public class CinematicSequence : MonoBehaviour
     [BoxGroup("Audio")]
     [SerializeField] private AudioSource audioSource;
 
-    [BoxGroup("Audio")]
-    [SerializeField] private AudioClip[] sfxClips;
-
-    // ---------------- QUEST ----------------
-    [BoxGroup("Quest")]
-    public bool advanceQuestOnEnd = false;
-
-    [BoxGroup("Quest"), ShowIf(nameof(advanceQuestOnEnd)), MinValue(0)]
-    public int[] questAdvanceClipIndices;
-
     // ---------------- EVENTS ----------------
     [BoxGroup("Events")]
     [Tooltip("Evento richiamabile da Animation Event (VFX, SFX, SetActive, ecc.).")]
@@ -145,12 +135,6 @@ public class CinematicSequence : MonoBehaviour
         currentClipIndex = (clips != null && clips.Length > 0)
             ? Mathf.Clamp(startClipIndex, 0, clips.Length - 1)
             : 0;
-
-        if (clips != null && questAdvanceClipIndices != null)
-        {
-            for (int i = 0; i < questAdvanceClipIndices.Length; i++)
-                questAdvanceClipIndices[i] = Mathf.Clamp(questAdvanceClipIndices[i], 0, clips.Length - 1);
-        }
     }
 
     // ======================================================
@@ -224,7 +208,6 @@ public class CinematicSequence : MonoBehaviour
         if (DialogueSystem.Instance != null)
             DialogueSystem.Instance.ForceCloseDialogue();
 
-        HandleQuestAdvance();
         HandleSequenceAdvance();
 
         if (cinematicCamera) cinematicCamera.enabled = false;
@@ -246,27 +229,6 @@ public class CinematicSequence : MonoBehaviour
         return null;
     }
 
-    private void HandleQuestAdvance()
-    {
-        if (!advanceQuestOnEnd || QuestManager.Instance == null)
-            return;
-
-        if (questAdvanceClipIndices == null || questAdvanceClipIndices.Length == 0)
-        {
-            QuestManager.Instance.AdvanceStep();
-            return;
-        }
-
-        for (int i = 0; i < questAdvanceClipIndices.Length; i++)
-        {
-            if (questAdvanceClipIndices[i] == currentClipIndex)
-            {
-                QuestManager.Instance.AdvanceStep();
-                break;
-            }
-        }
-    }
-
     private void HandleSequenceAdvance()
     {
         if (!advanceOnEachPlay || clips == null || clips.Length == 0)
@@ -283,12 +245,24 @@ public class CinematicSequence : MonoBehaviour
     }
 
     // ---------------- ANIMATION EVENTS ----------------
-    public void PlaySfx(int index)
-    {
-        if (!allowEvents || audioSource == null) return;
-        if (sfxClips == null || index < 0 || index >= sfxClips.Length) return;
 
-        audioSource.PlayOneShot(sfxClips[index]);
+    // ✅ Prova principale: Animation Event con parametro AudioClip
+    public void PlaySfx(AudioClip clip)
+    {
+        if (!allowEvents || audioSource == null || clip == null)
+            return;
+
+        audioSource.PlayOneShot(clip);
+    }
+
+    // ✅ Fallback: se Unity non mostra PlaySfx(AudioClip) nella lista eventi
+    public void PlaySfxObject(Object obj)
+    {
+        if (!allowEvents || audioSource == null)
+            return;
+
+        if (obj is AudioClip clip && clip != null)
+            audioSource.PlayOneShot(clip);
     }
 
     public void ActorSetTrigger(string triggerName)
@@ -303,7 +277,6 @@ public class CinematicSequence : MonoBehaviour
         actor.CrossFade(stateName, 0.1f);
     }
 
-    // ✅ USATO DAGLI ANIMATION EVENT (con parametro)
     public void TriggerDialogue(DialogueData data)
     {
         if (!allowEvents || data == null || DialogueSystem.Instance == null) return;

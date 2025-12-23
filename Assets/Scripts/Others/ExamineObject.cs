@@ -25,14 +25,9 @@ public class ExamineObject : MonoBehaviour
     [Tooltip("Se true, l'interazione carica una nuova scena invece di avviare un dialogo.")]
     public bool changeSceneOnInteract = false;
 
-    [BoxGroup("Scene Change"), ShowIf("changeSceneOnInteract")]
+    [BoxGroup("Scene Change"), ShowIf(nameof(changeSceneOnInteract))]
     [Tooltip("Nome della scena da caricare.")]
     public string targetSceneName;
-
-    // ---------------- QUEST ----------------
-    [BoxGroup("Quest")]
-    [Tooltip("Se true, quando l'esame è completo avanza di uno lo step della quest.")]
-    public bool advanceQuestOnExamineEnd = false;
 
     // ---------------- EVENTS ----------------
     [BoxGroup("Events")]
@@ -62,9 +57,7 @@ public class ExamineObject : MonoBehaviour
         // ✅ evento sempre chiamato su interazione valida
         onInteract?.Invoke();
 
-        // ✅ SOLUZIONE A:
-        // se è one-shot, disabilitiamo subito il collider
-        // così il raycast non lo colpisce più e il prompt sparisce
+        // ✅ one-shot: disabilita il collider per far sparire il prompt
         if (interactOnlyOnce && interactionCollider != null)
             interactionCollider.enabled = false;
 
@@ -76,8 +69,13 @@ public class ExamineObject : MonoBehaviour
             if (string.IsNullOrEmpty(targetSceneName))
             {
                 Debug.LogWarning($"[ExamineObject] targetSceneName non impostato su '{name}'");
+
+                // se NON è one-shot, permetti di riprovare
                 if (!interactOnlyOnce)
                     hasInteracted = false;
+
+                // se è one-shot e hai disabilitato il collider sopra, non potrai riprovare:
+                // è coerente col comportamento "only once".
                 return;
             }
 
@@ -87,12 +85,10 @@ public class ExamineObject : MonoBehaviour
         }
 
         // ----------------------------------------------
-        // NESSUN DIALOGO → SOLO QUEST
+        // NESSUN DIALOGO
         // ----------------------------------------------
         if (dialogue == null || DialogueSystem.Instance == null)
         {
-            HandleQuestUpdate();
-
             if (!interactOnlyOnce)
                 hasInteracted = false;
 
@@ -100,25 +96,12 @@ public class ExamineObject : MonoBehaviour
         }
 
         // ----------------------------------------------
-        // DIALOGO + QUEST
+        // DIALOGO
         // ----------------------------------------------
         DialogueSystem.Instance.StartDialogue(dialogue, true, () =>
         {
-            HandleQuestUpdate();
-
             if (!interactOnlyOnce)
                 hasInteracted = false;
         });
-    }
-
-    private void HandleQuestUpdate()
-    {
-        if (!advanceQuestOnExamineEnd)
-            return;
-
-        if (QuestManager.Instance == null)
-            return;
-
-        QuestManager.Instance.AdvanceStep();
     }
 }
